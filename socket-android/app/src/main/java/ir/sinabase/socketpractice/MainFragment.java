@@ -1,15 +1,19 @@
 package ir.sinabase.socketpractice;
 
 import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.MediaDataSource;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
@@ -47,8 +51,14 @@ import android.widget.Toast;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -81,7 +91,6 @@ import io.socket.emitter.Emitter;
 public class MainFragment extends Fragment {
 
 
-
     private static final String TAG = "MainFragment";
     private static final int REQUEST_LOGIN = 0;
     private static final int TYPING_TIMER_LENGTH = 600;
@@ -101,8 +110,13 @@ public class MainFragment extends Fragment {
     private MediaRecorder recorder = null;
 
 
-    private ImageButton alert_button,mic_button;
+    private ImageButton alert_button, mic_button;
 
+    private byte[] bytearray;
+    private String savedPath;
+    ByteArrayInputStream fileInputStream = null;
+    FileOutputStream fileOutputStream = null;
+    MediaPlayer mediaPlayer = new MediaPlayer();
 
     // This event fires 1st, before creation of fragment or any views
     // The onAttach method is called when the Fragment instance is associated with an Activity.
@@ -111,7 +125,7 @@ public class MainFragment extends Fragment {
     public void onAttach(Context context) {
         super.onAttach(context);
         mAdapter = new MessageAdapter(context, mMessages);
-        if (context instanceof Activity){
+        if (context instanceof Activity) {
             //this.listener = (MainActivity) context;
         }
     }
@@ -125,8 +139,8 @@ public class MainFragment extends Fragment {
 
         App app = (App) getActivity().getApplication();
         mSocket = app.getSocket();
-        mSocket.on(Socket.EVENT_CONNECT,onConnect);
-        mSocket.on(Socket.EVENT_DISCONNECT,onDisconnect);
+        mSocket.on(Socket.EVENT_CONNECT, onConnect);
+        mSocket.on(Socket.EVENT_DISCONNECT, onDisconnect);
         mSocket.on(Socket.EVENT_CONNECT_ERROR, onConnectError);
 //        mSocket.on(Socket.EVENT_CONNECT_TIMEOUT, onConnectError);
 
@@ -138,9 +152,20 @@ public class MainFragment extends Fragment {
         mSocket.on("stop typing", onStopTyping);
         mSocket.on("pressed alert", onPressedAlert);
         mSocket.on("get stream", onGetStream);
+        mSocket.on("finish stream", onFinishStream);
         mSocket.connect();
 
         startSignIn();
+
+
+        savedPath = getContext().getFilesDir() + "/socketio/";
+        File dir = new File(savedPath);
+        if (!dir.exists()) {
+            Log.e("TAG", "file not exist");
+            dir.mkdirs();
+        }
+
+
     }
 
     @Override
@@ -247,13 +272,20 @@ public class MainFragment extends Fragment {
         mSocket.off("user left", onUserLeft);
         mSocket.off("typing", onTyping);
         mSocket.off("stop typing", onStopTyping);
+
+
     }
+
     @Override
     public void onStop() {
         super.onStop();
         if (recorder != null) {
             recorder.release();
             recorder = null;
+        }
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+            mediaPlayer = null;
         }
     }
 
@@ -262,6 +294,7 @@ public class MainFragment extends Fragment {
         // Inflate the menu; this adds items to the action bar if it is present.
         inflater.inflate(R.menu.menu_main, menu);
     }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle action bar item clicks here. The action bar will
@@ -285,21 +318,25 @@ public class MainFragment extends Fragment {
         mAdapter.notifyItemInserted(mMessages.size() - 1);
         scrollToBottom();
     }
+
     private void addParticipantsLog(int numUsers) {
         addLog(getResources().getQuantityString(R.plurals.message_participants, numUsers, numUsers));
     }
+
     private void addMessage(String username, String message) {
         mMessages.add(new Message.Builder(Message.TYPE_MESSAGE)
                 .username(username).message(message).build());
         mAdapter.notifyItemInserted(mMessages.size() - 1);
         scrollToBottom();
     }
+
     private void addTyping(String username) {
         mMessages.add(new Message.Builder(Message.TYPE_ACTION)
                 .username(username).build());
         mAdapter.notifyItemInserted(mMessages.size() - 1);
         scrollToBottom();
     }
+
     private void removeTyping(String username) {
         for (int i = mMessages.size() - 1; i >= 0; i--) {
             Message message = mMessages.get(i);
@@ -309,6 +346,7 @@ public class MainFragment extends Fragment {
             }
         }
     }
+
     private void attemptSend() {
         if (null == mUsername) return;
         if (!mSocket.connected()) return;
@@ -328,17 +366,20 @@ public class MainFragment extends Fragment {
         mSocket.emit("new message", message);
         mSocket.emit("byte text", message.getBytes());
     }
+
     private void startSignIn() {
         mUsername = null;
         Intent intent = new Intent(getActivity(), LoginActivity.class);
         startActivityForResult(intent, REQUEST_LOGIN);
     }
+
     private void leave() {
         mUsername = null;
         mSocket.disconnect();
         mSocket.connect();
         startSignIn();
     }
+
     private void scrollToBottom() {
         mMessagesView.scrollToPosition(mAdapter.getItemCount() - 1);
     }
@@ -351,8 +392,8 @@ public class MainFragment extends Fragment {
             getActivity().runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if(!isConnected) {
-                        if(null!=mUsername)
+                    if (!isConnected) {
+                        if (null != mUsername)
                             mSocket.emit("add user", mUsername);
                         Toast.makeText(getActivity().getApplicationContext(),
                                 R.string.connect, Toast.LENGTH_LONG).show();
@@ -508,8 +549,8 @@ public class MainFragment extends Fragment {
                     String username;
                     try {
                         username = data.getString("username");
-                        Log.e("TAG", "run: "+username+ " Press ALERT");
-                        Toast.makeText(getActivity(), "run: "+username+ " Press ALERT", Toast.LENGTH_SHORT).show();
+                        Log.e("TAG", "run: " + username + " Press ALERT");
+                        Toast.makeText(getActivity(), "run: " + username + " Press ALERT", Toast.LENGTH_SHORT).show();
                         PlayBeep();
                         vibrate();
 
@@ -526,15 +567,72 @@ public class MainFragment extends Fragment {
     private Emitter.Listener onGetStream = new Emitter.Listener() {
         @Override
         public void call(final Object... args) {
+            bytearray = (byte[]) args[0]; //received bytes
+            Log.e("TAG", "call: comming : " + bytearray.length);
 
-            Log.e("TAGs", "get bytes ");
-//                    byte[] bytearray = (byte[])args[0]; //received bytes
-//                    for  (byte b : bytearray) {
-//                        Log.e("TAG", "byte"+b);
+
+
+
+
+
+
+
+
+//            new Thread(() -> {
+//                try {
+//                    fileInputStream=new ByteArrayInputStream((byte[])args[0]);
+//                    fileOutputStream=new FileOutputStream(savedPath+"test.mp3");
+//                    byte[] buffer=new byte[1024*4];
+//                    int lenght=0;
+//                    while((lenght=fileInputStream.read(buffer))!=-1){
+//                        fileOutputStream.write(buffer,0,lenght);
 //                    }
+//                }catch (IOException e) {
+//                    e.printStackTrace();
+//                }finally {
+//                    try {
+//                        if(fileInputStream!=null)
+//                            fileInputStream.close();
+//                        if(fileOutputStream!=null)
+//                            fileOutputStream.close();
+//                        Log.e(TAG, "call: finished save file" );
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                    }
+//                }
+//            }).start();
         }
     };
+    private Emitter.Listener onFinishStream = new Emitter.Listener() {
+        @Override
+        public void call(final Object... args) {
+            Log.e("TAG", "call: finish stream : " + bytearray.length);
+            String savedPath = getContext().getFilesDir() + "/socketio/";
+            File dir = new File(savedPath);
+            if (!dir.exists()) {
+                Log.e("TAG", "file not exist");
+                dir.mkdirs();
+            }
+            try {
+                FileOutputStream fos = new FileOutputStream(savedPath + "test.mp3");
+                fos.write(bytearray);
+                fos.close();
+            } catch (Exception e) {
+                Log.e(TAG, e.getMessage());
+            } finally {
+                try {
+                    MediaPlayer mp = new MediaPlayer();
+                    mp.setDataSource(savedPath + "test.mp3");
+                    mp.prepare();
+                    mp.start();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
 
+            }
+
+        }
+    };
     private Runnable onTypingTimeout = new Runnable() {
         @Override
         public void run() {
@@ -545,6 +643,7 @@ public class MainFragment extends Fragment {
         }
     };
     // Listeners -----------------------------------------------------------------------------------
+
 
     private void PlayBeep() {
         MediaPlayer m = new MediaPlayer();
@@ -566,6 +665,7 @@ public class MainFragment extends Fragment {
             e.printStackTrace();
         }
     }
+
     public void vibrate() {
 
         Vibrator v = (Vibrator) getActivity().getSystemService(Context.VIBRATOR_SERVICE);
@@ -578,16 +678,17 @@ public class MainFragment extends Fragment {
         }
 
     }
-    public void recordSound(){
-        if (isRecording){
+
+    public void recordSound() {
+        if (isRecording) {
             chronometer.setBase(SystemClock.elapsedRealtime());
             chronometer.stop();
-            isRecording =false;
+            isRecording = false;
             mic_button.setColorFilter(ContextCompat.getColor(getActivity(), R.color.red), android.graphics.PorterDuff.Mode.MULTIPLY);
             mic_button.setImageResource(R.drawable.ic_baseline_mic_24);
             stopRecording();
-        }else{
-            isRecording =true;
+        } else {
+            isRecording = true;
             chronometer.setBase(SystemClock.elapsedRealtime());
             chronometer.start();
             mic_button.setColorFilter(ContextCompat.getColor(getActivity(), R.color.black), android.graphics.PorterDuff.Mode.MULTIPLY);
@@ -610,6 +711,8 @@ public class MainFragment extends Fragment {
 
 
     }
+
+
     private void startRecording() {
 
         mSocket.emit("start stream");
@@ -634,54 +737,54 @@ public class MainFragment extends Fragment {
                 int read;
                 byte[] data = new byte[16384];
 
-
-
-                while ((read = inputStream.read(data, 0, data.length)) != -1&& isRecording) {
+                while ((read = inputStream.read(data, 0, data.length)) != -1 && isRecording) {
                     byteArrayOutputStream.write(data, 0, read);
 
 //                    To convert byteArrayOutputStream to byte[] use byteArrayOutputStream.toByteArray()
+                    mSocket.emit("stream", mUsername, byteArrayOutputStream.toByteArray(), byteArrayOutputStream.toByteArray().length);
 
-                    mSocket.emit("stream", mUsername,byteArrayOutputStream.toByteArray(),byteArrayOutputStream.toByteArray().length);
-
-                    Log.e("TAG", "startRecording: data is : " +  byteArrayOutputStream.toByteArray().toString() );
-                    Log.e("TAG", "startRecording: data size is : " +  byteArrayOutputStream.toByteArray().length );
-
+//                    Log.e("TAG", "startRecording: data is : " +  byteArrayOutputStream.toByteArray().toString() );
+//                    Log.e("TAG", "startRecording: data size is : " +  byteArrayOutputStream.toByteArray().length );
 
 
                 }
 
 
-                Log.e("TAG", "stop recording " );
-//                String savedPath = Environment.getExternalStorageDirectory() + "/" + "socketio/";
-                String savedPath =getContext().getFilesDir() + "/socketio/" ;
-                File dir = new File(savedPath);
-                if (!dir.exists()) {
-                    Log.e("TAG", "file not exist" );
-                    dir.mkdirs();
-                }
-                Long tsLong = System.currentTimeMillis()/1000;
-                String ts = tsLong.toString();
-                FileOutputStream fos = null;
-                try {
-                    Log.e("TAG", "start saving bytearray outputstram " );
-                    fos = new FileOutputStream(savedPath+ts+".mp3");
-                    // Put data in your baos
-                    byteArrayOutputStream.writeTo(fos);
-                } catch(IOException ioe) {
-                    Log.e("TAG", "failed save bytarray: error saving file "+ioe.getMessage() );
-                    // Handle exception here
-                    ioe.printStackTrace();
-                } finally {
-                    Log.e("TAG", "finished save file");
-                    fos.close();
-                }
+//                Log.e("TAG", "stop recording " );
+////                String savedPath = Environment.getExternalStorageDirectory() + "/" + "socketio/";
+//                String savedPath =getContext().getFilesDir() + "/socketio/" ;
+//                File dir = new File(savedPath);
+//                if (!dir.exists()) {
+//                    Log.e("TAG", "file not exist" );
+//                    dir.mkdirs();
+//                }
+//                Long tsLong = System.currentTimeMillis()/1000;
+//                String ts = tsLong.toString();
+//                FileOutputStream fos = null;
+//                try {
+//                    Log.e("TAG", "start saving bytearray outputstram " );
+//                    fos = new FileOutputStream(savedPath+ts+".mp3");
+//                    // Put data in your baos
+//                    byteArrayOutputStream.writeTo(fos);
+//                } catch(IOException ioe) {
+//                    Log.e("TAG", "failed save bytarray: error saving file "+ioe.getMessage() );
+//                    // Handle exception here
+//                    ioe.printStackTrace();
+//                } finally {
+//                    Log.e("TAG", "finished save file");
+//                    fos.close();
+//                }
 
                 byteArrayOutputStream.flush();
 
-                if (recorder!=null){
-                    recorder.stop();
-                    recorder.release();
-                    recorder = null;
+                if (recorder != null) {
+                    try {
+                        recorder.stop();
+                        recorder.release();
+                        recorder = null;
+                    }catch (Exception e){
+
+                    }
                 }
 
             } catch (IOException e) {
@@ -714,23 +817,45 @@ public class MainFragment extends Fragment {
 
     private void stopRecording() {
         mSocket.emit("end stream");
-        if (recorder!=null){
-            recorder.stop();
-            recorder.release();
-            recorder = null;
+        if (recorder != null) {
+            try {
+                recorder.stop();
+                recorder.release();
+                recorder = null;
+            }catch (Exception e){
+
+            }
         }
     }
 
 
+    private void playMp3(byte[] mp3SoundByteArray) {
+        try {
+            // create temp file that will hold byte array
+            File tempMp3 = File.createTempFile("kurchina", "mp3", getActivity().getFilesDir());
+            tempMp3.deleteOnExit();
+            FileOutputStream fos = new FileOutputStream(tempMp3);
+            fos.write(mp3SoundByteArray);
+            fos.close();
 
+            // resetting mediaplayer instance to evade problems
+            mediaPlayer.reset();
 
+            // In case you run into issues with threading consider new instance like:
+            // MediaPlayer mediaPlayer = new MediaPlayer();
 
+            // Tried passing path directly, but kept getting
+            // "Prepare failed.: status=0x1"
+            // so using file descriptor instead
+            FileInputStream fis = new FileInputStream(tempMp3);
+            mediaPlayer.setDataSource(fis.getFD());
 
-
-
-
-
-
-
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+        } catch (IOException ex) {
+            String s = ex.toString();
+            ex.printStackTrace();
+        }
+    }
 }
 
