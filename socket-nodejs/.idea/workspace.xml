@@ -2,7 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="52796f40-af0e-4219-9eb9-42ba3711c8ea" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/../socket-android/app/src/main/java/ir/sinabase/socketpractice/MainFragment.java" beforeDir="false" afterPath="$PROJECT_DIR$/../socket-android/app/src/main/java/ir/sinabase/socketpractice/MainFragment.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.js" beforeDir="false" afterPath="$PROJECT_DIR$/index.js" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -16,14 +19,16 @@
     </execution>
   </component>
   <component name="Git.Settings">
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
   </component>
   <component name="ProjectId" id="1p6Qhy8O7eC9HAGZ7qKdhPpisg1" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="PropertiesComponent">
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="javascript.nodejs.core.library.configured.version" value="12.13.1" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_package_manager_path" value="npm" />
+    <property name="settings.editor.selected.configurable" value="project.propVCSSupport.Mappings" />
   </component>
   <component name="RunDashboard">
     <option name="ruleStates">
@@ -49,6 +54,11 @@
       <updated>1614501184997</updated>
       <workItem from="1614501187173" duration="3378000" />
       <workItem from="1614511927548" duration="12854000" />
+      <workItem from="1614580327351" duration="8336000" />
+      <workItem from="1614607660203" duration="4586000" />
+      <workItem from="1614664667973" duration="3009000" />
+      <workItem from="1614673256201" duration="953000" />
+      <workItem from="1614676860860" duration="21000" />
     </task>
     <servers />
   </component>
@@ -60,10 +70,17 @@
       <map>
         <entry key="MAIN">
           <value>
-            <State />
+            <State>
+              <option name="COLUMN_ORDER" />
+            </State>
           </value>
         </entry>
       </map>
     </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <ignored-roots>
+      <path value="$PROJECT_DIR$" />
+    </ignored-roots>
   </component>
 </project>
